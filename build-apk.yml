@@ -1,0 +1,68 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '17'
+
+      - name: Extrair o projeto do .zip mais recente
+        run: |
+          ZIP=$(ls -t ./*.zip | head -1)
+          echo "Usando $ZIP"
+          unzip -q -o "$ZIP" -d src
+          echo "CSPROJ=$(find src -name LzKeyMap.csproj | head -1)" >> "$GITHUB_ENV"
+
+      - name: Instalar workload MAUI Android
+        run: dotnet workload install maui-android
+
+      - name: Instalar dependências do Android SDK
+        run: >
+          dotnet build "$CSPROJ" -t:InstallAndroidDependencies -f net8.0-android
+          -p:AndroidSdkDirectory="$ANDROID_HOME" -p:AcceptAndroidSDKLicenses=True
+
+      - name: Compilar
+        run: |
+          set -o pipefail
+          dotnet build "$CSPROJ" -f net8.0-android -c Release \
+            -p:AndroidPackageFormat=apk -p:AndroidSdkDirectory="$ANDROID_HOME" \
+            -p:PublishTrimmed=false 2>&1 | tee build.log
+
+      - name: Resumo dos erros
+        if: always()
+        run: |
+          {
+            echo '### Erros do build (copie e cole no chat)'
+            echo '```'
+            if [ -f build.log ]; then grep -E 'error [A-Za-z]+[0-9]*' build.log | sort -u | head -60; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LzKeyMap-apk
+          path: src/**/*-Signed.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+          
