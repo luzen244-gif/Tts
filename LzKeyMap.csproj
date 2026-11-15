@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0-android</TargetFramework>
+    <TargetFramework>net10.0-android</TargetFramework>
     <OutputType>Exe</OutputType>
     <RootNamespace>LzKeyMap</RootNamespace>
     <UseMaui>true</UseMaui>
@@ -14,7 +14,7 @@
     <ApplicationDisplayVersion>2.0</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
 
-    <!-- API 26: gestos contínuos (dispatchGesture willContinue) e canais de notificação -->
+    <!-- API 26: gestos contínuos e canais de notificação -->
     <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
@@ -23,12 +23,9 @@
   </ItemGroup>
 
   <!--
-    Shizuku (opcional): baixe api-13.1.5.aar e provider-13.1.5.aar (Maven: dev.rikka.shizuku) para libs/ e descomente.
-    Sem as .aar o ShizukuInputExecutor continua compilando e reporta "Unsupported" com a explicação (de propósito).
-  <ItemGroup>
-    <AndroidLibrary Include="libs\api-13.1.5.aar" Bind="false" />
-    <AndroidLibrary Include="libs\provider-13.1.5.aar" Bind="false" />
-  </ItemGroup>
+    Shizuku opcional:
+    Coloque as bibliotecas AAR em libs/ e descomente o bloco
+    somente quando for utilizar essas dependências.
   -->
 
 </Project>
