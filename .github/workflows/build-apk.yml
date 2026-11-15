@@ -1,3 +1,4 @@
+
 name: Build APK
 
 on:
@@ -42,7 +43,7 @@ jobs:
             -f net10.0-android \
             -c Release \
             -p:AndroidPackageFormat=apk \
-            -p:PublishTrimmed=false
+            -p:PublishTrimmed=true
 
       - name: Localizar APK
         run: |
