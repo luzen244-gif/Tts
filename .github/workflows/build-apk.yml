@@ -20,43 +20,39 @@ jobs:
       - name: Baixar projeto
         uses: actions/checkout@v4
 
-      - name: Configurar .NET
+      - name: Configurar .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
-      - name: Configurar Java
+      - name: Configurar Java 21
         uses: actions/setup-java@v4
         with:
           distribution: microsoft
-          java-version: '17'
+          java-version: '21'
 
       - name: Preparar projeto
         shell: bash
         run: |
           set -e
-
           mkdir -p src
 
-          ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -1)
+          ZIP=$(find . -maxdepth 1 -iname "*.zip" -type f | head -1)
 
           if [ -n "$ZIP" ]; then
-            echo "Extraindo: $ZIP"
             unzip -q -o "$ZIP" -d src
-          else
-            echo "Nenhum ZIP encontrado. Usando arquivos do repositório."
           fi
 
           PROJECT=$(find . -type f -name "*.csproj" \
             -not -path "./.git/*" | head -1)
 
           if [ -z "$PROJECT" ]; then
-            echo "ERRO: Nenhum arquivo .csproj encontrado."
+            echo "Projeto .csproj não encontrado!"
             exit 1
           fi
 
-          echo "Projeto encontrado: $PROJECT"
           echo "CSPROJ=$PROJECT" >> "$GITHUB_ENV"
+          echo "Projeto: $PROJECT"
 
       - name: Instalar MAUI Android
         run: dotnet workload install maui-android
@@ -65,21 +61,14 @@ jobs:
         run: dotnet restore "$CSPROJ"
 
       - name: Compilar APK
-        shell: bash
         run: |
-          set -o pipefail
-
-          dotnet build "$CSPROJ" \
-            -f net8.0-android \
+          dotnet publish "$CSPROJ" \
+            -f net10.0-android \
             -c Release \
-            --no-restore \
             -p:AndroidPackageFormat=apk \
-            -p:PublishTrimmed=false \
-            -p:AndroidUseAapt2=true \
-            2>&1 | tee build.log
+            -p:AndroidKeyStore=false
 
       - name: Localizar APK
-        shell: bash
         run: |
           mkdir -p output
 
@@ -88,12 +77,7 @@ jobs:
             -not -path "./.git/*" \
             -exec cp {} output/ \;
 
-          if [ -z "$(find output -name '*.apk' -print -quit)" ]; then
-            echo "ERRO: APK não foi gerado."
-            exit 1
-          fi
-
-          ls -lh output/
+          test -n "$(find output -name '*.apk' -print -quit)"
 
       - name: Enviar APK
         uses: actions/upload-artifact@v4
@@ -101,12 +85,4 @@ jobs:
           name: LuzenMapper-APK
           path: output/*.apk
           if-no-files-found: error
-
-      - name: Salvar log de compilação
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Build-Logs
-          path: build.log
-          if-no-files-found: ignore
           
