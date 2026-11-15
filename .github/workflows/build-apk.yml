@@ -1,4 +1,3 @@
-
 name: Build APK
 
 on:
@@ -12,46 +11,96 @@ permissions:
 
 jobs:
   build:
-    name: Compilar LzKeyMap
+    name: Compilar LzKeyMap pelo ZIP
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
-      - name: Baixar projeto
+      - name: Baixar repositório
         uses: actions/checkout@v4
 
-      - name: Configurar .NET 10
+      - name: Configurar .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
-      - name: Configurar Java 21
+      - name: Extrair projeto completo do ZIP
+        id: project
+        shell: bash
+        run: |
+          set -e
+          test -f "./LzKeyMap.zip" || {
+            echo "LzKeyMap.zip não encontrado na raiz"
+            exit 1
+          }
+
+          DEST="$RUNNER_TEMP/lzkeymap-project"
+          mkdir -p "$DEST"
+          unzip -q "./LzKeyMap.zip" -d "$DEST"
+
+          CSPROJ=$(find "$DEST" -type f -name "LzKeyMap.csproj" -print -quit)
+          test -n "$CSPROJ" || {
+            echo "LzKeyMap.csproj não encontrado dentro do ZIP"
+            find "$DEST" -maxdepth 4 -type f | head -80
+            exit 1
+          }
+
+          TFM=$(python3 - "$CSPROJ" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          root = ET.parse(sys.argv[1]).getroot()
+          values = []
+          for el in root.iter():
+              if el.tag.split('}')[-1] in ('TargetFramework', 'TargetFrameworks') and el.text:
+                  values.extend(x.strip() for x in el.text.split(';') if x.strip())
+          android = next((x for x in values if x.endswith('-android')), None)
+          if not android:
+              raise SystemExit("O projeto não declara um framework Android.")
+          print(android)
+          PY
+          )
+
+          JAVA=17
+          if [[ "$TFM" == net10* ]]; then JAVA=21; fi
+
+          echo "CSPROJ=$CSPROJ" >> "$GITHUB_ENV"
+          echo "TFM=$TFM" >> "$GITHUB_ENV"
+          echo "CSPROJ=$CSPROJ" >> "$GITHUB_OUTPUT"
+          echo "JAVA=$JAVA" >> "$GITHUB_OUTPUT"
+
+          echo "Projeto: $CSPROJ"
+          echo "Framework: $TFM"
+          echo "Java: $JAVA"
+
+      - name: Configurar Java
         uses: actions/setup-java@v4
         with:
           distribution: microsoft
-          java-version: '21'
+          java-version: ${{ steps.project.outputs.JAVA }}
 
       - name: Instalar MAUI Android
         run: dotnet workload install maui-android
 
-      - name: Restaurar projeto
-        run: dotnet restore LzKeyMap.csproj
+      - name: Restaurar dependências
+        run: dotnet restore "$CSPROJ"
 
       - name: Compilar APK
         run: |
-          dotnet publish LzKeyMap.csproj \
-            -f net10.0-android \
+          dotnet publish "$CSPROJ" \
+            -f "$TFM" \
             -c Release \
             -p:AndroidPackageFormat=apk \
             -p:PublishTrimmed=true
 
       - name: Localizar APK
         run: |
+          set -e
           mkdir -p output
-          find . -type f -name "*.apk" \
-            -not -path "./output/*" \
-            -exec cp {} output/ \;
-          test -n "$(find output -name '*.apk' -print -quit)"
+          find "$(dirname "$CSPROJ")" -type f -name "*.apk" -exec cp {} output/ \;
+          test -n "$(find output -type f -name '*.apk' -print -quit)"
+          ls -lh output/
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
