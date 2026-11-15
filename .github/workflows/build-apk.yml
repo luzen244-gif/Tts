@@ -1,4 +1,3 @@
-
 name: Build APK
 
 on:
@@ -12,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Compilar APK Android
+    name: Compilar LzKeyMap
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -31,58 +30,32 @@ jobs:
           distribution: microsoft
           java-version: '21'
 
-      - name: Preparar projeto
-        shell: bash
-        run: |
-          set -e
-          mkdir -p src
-
-          ZIP=$(find . -maxdepth 1 -iname "*.zip" -type f | head -1)
-
-          if [ -n "$ZIP" ]; then
-            unzip -q -o "$ZIP" -d src
-          fi
-
-          PROJECT=$(find . -type f -name "*.csproj" \
-            -not -path "./.git/*" | head -1)
-
-          if [ -z "$PROJECT" ]; then
-            echo "Projeto .csproj não encontrado!"
-            exit 1
-          fi
-
-          echo "CSPROJ=$PROJECT" >> "$GITHUB_ENV"
-          echo "Projeto: $PROJECT"
-
       - name: Instalar MAUI Android
         run: dotnet workload install maui-android
 
-      - name: Restaurar dependências
-        run: dotnet restore "$CSPROJ"
+      - name: Restaurar projeto
+        run: dotnet restore LzKeyMap.csproj
 
       - name: Compilar APK
         run: |
-          dotnet publish "$CSPROJ" \
+          dotnet publish LzKeyMap.csproj \
             -f net10.0-android \
             -c Release \
             -p:AndroidPackageFormat=apk \
-            -p:AndroidKeyStore=false
+            -p:PublishTrimmed=false
 
       - name: Localizar APK
         run: |
           mkdir -p output
-
           find . -type f -name "*.apk" \
             -not -path "./output/*" \
-            -not -path "./.git/*" \
             -exec cp {} output/ \;
-
           test -n "$(find output -name '*.apk' -print -quit)"
 
-      - name: Enviar APK
+      - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: LuzenMapper-APK
+          name: LzKeyMap-APK
           path: output/*.apk
           if-no-files-found: error
           
