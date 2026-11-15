@@ -1,68 +1,112 @@
+
 name: Build APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
   build:
+    name: Compilar APK Android
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 60
 
-      - uses: actions/setup-dotnet@v4
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+
+      - name: Configurar .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - uses: actions/setup-java@v4
+      - name: Configurar Java
+        uses: actions/setup-java@v4
         with:
           distribution: microsoft
           java-version: '17'
 
-      - name: Extrair o projeto do .zip mais recente
+      - name: Preparar projeto
+        shell: bash
         run: |
-          ZIP=$(ls -t ./*.zip | head -1)
-          echo "Usando $ZIP"
-          unzip -q -o "$ZIP" -d src
-          echo "CSPROJ=$(find src -name LzKeyMap.csproj | head -1)" >> "$GITHUB_ENV"
+          set -e
 
-      - name: Instalar workload MAUI Android
+          mkdir -p src
+
+          ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -1)
+
+          if [ -n "$ZIP" ]; then
+            echo "Extraindo: $ZIP"
+            unzip -q -o "$ZIP" -d src
+          else
+            echo "Nenhum ZIP encontrado. Usando arquivos do repositório."
+          fi
+
+          PROJECT=$(find . -type f -name "*.csproj" \
+            -not -path "./.git/*" | head -1)
+
+          if [ -z "$PROJECT" ]; then
+            echo "ERRO: Nenhum arquivo .csproj encontrado."
+            exit 1
+          fi
+
+          echo "Projeto encontrado: $PROJECT"
+          echo "CSPROJ=$PROJECT" >> "$GITHUB_ENV"
+
+      - name: Instalar MAUI Android
         run: dotnet workload install maui-android
 
-      - name: Instalar dependências do Android SDK
-        run: >
-          dotnet build "$CSPROJ" -t:InstallAndroidDependencies -f net8.0-android
-          -p:AndroidSdkDirectory="$ANDROID_HOME" -p:AcceptAndroidSDKLicenses=True
+      - name: Restaurar dependências
+        run: dotnet restore "$CSPROJ"
 
-      - name: Compilar
+      - name: Compilar APK
+        shell: bash
         run: |
           set -o pipefail
-          dotnet build "$CSPROJ" -f net8.0-android -c Release \
-            -p:AndroidPackageFormat=apk -p:AndroidSdkDirectory="$ANDROID_HOME" \
-            -p:PublishTrimmed=false 2>&1 | tee build.log
 
-      - name: Resumo dos erros
-        if: always()
+          dotnet build "$CSPROJ" \
+            -f net8.0-android \
+            -c Release \
+            --no-restore \
+            -p:AndroidPackageFormat=apk \
+            -p:PublishTrimmed=false \
+            -p:AndroidUseAapt2=true \
+            2>&1 | tee build.log
+
+      - name: Localizar APK
+        shell: bash
         run: |
-          {
-            echo '### Erros do build (copie e cole no chat)'
-            echo '```'
-            if [ -f build.log ]; then grep -E 'error [A-Za-z]+[0-9]*' build.log | sort -u | head -60; fi
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p output
 
-      - uses: actions/upload-artifact@v4
+          find . -type f -name "*.apk" \
+            -not -path "./output/*" \
+            -not -path "./.git/*" \
+            -exec cp {} output/ \;
+
+          if [ -z "$(find output -name '*.apk' -print -quit)" ]; then
+            echo "ERRO: APK não foi gerado."
+            exit 1
+          fi
+
+          ls -lh output/
+
+      - name: Enviar APK
+        uses: actions/upload-artifact@v4
         with:
-          name: LzKeyMap-apk
-          path: src/**/*-Signed.apk
+          name: LuzenMapper-APK
+          path: output/*.apk
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - name: Salvar log de compilação
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: build-log
+          name: Build-Logs
           path: build.log
           if-no-files-found: ignore
           
